@@ -15,9 +15,7 @@ YAGS was made to make the daily Genshin routine less annoying.
 This script tries to improve controls, automate repeatable things, and bring some useful shortcuts.
 
 > [!IMPORTANT]
-> Script is made solely for 1920x1080 game resolution with stable 60FPS and low ping in mind (not a necessity, but some things *might* not work as expected). The script might not work unless the game is in [borderless mode](https://gaming.stackexchange.com/a/376533).
-> 
-> There are no plans to adapt it to other resolutions in the near future.
+> Script works with 1920x1080 and 2560x1440 (should work with any resolution), with stable 60FPS and low ping in mind (not a necessity, but some things *might* not work as expected). The script might not work unless the game is in [borderless mode](https://gaming.stackexchange.com/a/376533).
 
 ---
 

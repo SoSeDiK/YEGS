@@ -4,7 +4,6 @@
 ; ToDo:
 ; - Fill "Controls" page (possibly even changing hotkeys?)
 ; - Rework Auto Pickup
-; - Rework Bunnyhop
 ; - Rework Auto Attack module (customizable sequences?)
 ; - Support different screen resolutions? -finished :)
 ; =======================================
@@ -935,26 +934,29 @@ Global ResetAutoSprint := False
 OnSpace(*) {
 	Global
 	If (not PressingSpace)
-		SetTimer PreBunnyhopS, -200 ; Let the user release the button
-	PressingSpace := True
+		SetTimer BunnyhopS, 5 ; Start continuous jumping with minimal delay
+		PressingSpace := True
 }
 
 OnSpaceUp(*) {
 	Global
 	PressingSpace := False
+	SetTimer BunnyhopS, 0 ; Stop jumping when Space is released
 }
 
 XButtonJump(*) {
 	Global
-	If (not PressingXButtonToJump)
-		SetTimer PreBunnyhopX, -200
-	PressingXButtonToJump := True
+	If (not PressingXButtonToJump){
+		SetTimer BunnyhopX, 5 ; Start continuous jumping with minimal delay
+		PressingXButtonToJump := True
+	}
 	Jump()
 }
 
 XButtonJumpUp(*) {
 	Global
 	PressingXButtonToJump := False
+	SetTimer BunnyhopX, 0 ; Stop jumping when XButton is released
 	If (IsDiving()) {
 		Send "{Space Up}"
 	}
@@ -978,15 +980,6 @@ Jump() {
 
 	SimpleJump()
 }
-
-PreBunnyhopX() {
-	SetTimer BunnyhopX, 50
-}
-
-PreBunnyhopS() {
-	SetTimer BunnyhopS, 50
-}
-
 
 BunnyhopX() {
 	Global
@@ -1012,6 +1005,10 @@ BunnyhopS() {
 
 SimpleJump() {
 	Global
+	; Ensure Space is released before jumping
+	Send "{Space Up}"
+	Sleep 10 
+
 	; Allow jumping while in extra run mode
 	If (ResetAutoSprint) {
 		SetTimer ContinueAutoSprint, 0 ; Kill old timer
@@ -1523,6 +1520,7 @@ HasPickup() {
 	If (not PixelSearch(&FoundX, &FoundY, round(1120*ResMultiX), round(340*ResMultiY), round(1120*ResMultiX), round(730*ResMultiY), Color)) { ; Icon wasn't found
 		Return False
 	}
+
 
 	; Do not pickup if position of "F" has changed
 	Sleep 10
@@ -3360,7 +3358,7 @@ HasSorushGadget() { ; ToDo: workaround gadget delay
 }
 
 IsDiving() {
-	Return IsColor(round(1692*ResMultiX), round(1044*ResMultiY), "0xFFFFFF", 3) and IsColor(round(1692*ResMultiX), round(1045*ResMultiY), "0xFFFFFF", 3)
+	Return IsColor(round(1692*ResMultiX), round(1044*ResMultiY), "0xFFFFFF", 3) and IsColor(round(1672.5*ResMultiX), round(1047,75*ResMultiY), "0xFFFFFF", 3)
 }
 
 

@@ -929,34 +929,38 @@ Global PressingXButtonToJump := False
 Global PressingSpace := False
 Global ResetAutoSprint := False
 
-
+;TODO: still works in water
 
 OnSpace(*) {
 	Global
 	If (not PressingSpace)
-		SetTimer BunnyhopS, 5 ; Start continuous jumping with minimal delay
+		SetTimer PreBunnyhopS, -600 ; Start after 600 ms because of boat
 		PressingSpace := True
 }
 
 OnSpaceUp(*) {
 	Global
 	PressingSpace := False
-	SetTimer BunnyhopS, 0 ; Stop jumping when Space is released
+	SetTimer BunnyhopS, 0 ; Stop continuous jumping when Space is released
+	SetTimer PreBunnyhopS, 0 ; Stop the delay timer if Space is released early
+	If (IsDiving()) {
+		Send "{Space Up}"
+	}
 }
 
 XButtonJump(*) {
 	Global
 	If (not PressingXButtonToJump){
-		SetTimer BunnyhopX, 5 ; Start continuous jumping with minimal delay
+		SetTimer PreBunnyhopX, -500 ; Start after 500 ms
 		PressingXButtonToJump := True
 	}
-	Jump()
 }
 
 XButtonJumpUp(*) {
 	Global
 	PressingXButtonToJump := False
-	SetTimer BunnyhopX, 0 ; Stop jumping when XButton is released
+	SetTimer BunnyhopX, 0 ; Stop continuous jumping when XButton is released
+	SetTimer PreBunnyhopX, 0 ; Stop the delay timer if XButton is released early
 	If (IsDiving()) {
 		Send "{Space Up}"
 	}
@@ -966,20 +970,15 @@ XButtonJumpUp(*) {
 	}
 }
 
-
-
-Jump() {
-	Global
-	; Long jump if in boat
-	If (IsInBoat()) {
-		Send "{Space Down}"
-		Sleep 700
-		Send "{Space Up}"
-		Return
-	}
-
-	SimpleJump()
+PreBunnyhopS() {
+	SetTimer BunnyhopS, 5 ; Start continuous bunny hopping after delay
 }
+
+PreBunnyhopX() {
+	SetTimer BunnyhopX, 5 ; Start continuous bunny hopping after delay
+}
+
+
 
 BunnyhopX() {
 	Global
@@ -1520,7 +1519,7 @@ HasPickup() {
 	If (not PixelSearch(&FoundX, &FoundY, round(1120*ResMultiX), round(340*ResMultiY), round(1120*ResMultiX), round(730*ResMultiY), Color)) { ; Icon wasn't found
 		Return False
 	}
-
+	;MsgBox "Item Found" ; TODO: activates inconsistent
 
 	; Do not pickup if position of "F" has changed
 	Sleep 10

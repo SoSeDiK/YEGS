@@ -5,7 +5,7 @@
 ; - Fill "Controls" page (possibly even changing hotkeys?)
 ; - Rework Auto Pickup
 ; - Rework Auto Attack module (customizable sequences?)
-; - Support different screen resolutions?
+; - Support different screen resolutions? -finished :)
 ; =======================================
 #Requires AutoHotkey v2.0
 
@@ -18,7 +18,7 @@ A_HotkeyInterval := 0 ; Disable delay between hotkeys to allow many at once
 Thread "interrupt", 0 ; Make all threads always-interruptible
 SetTitleMatchMode "RegEx" ; Allow matching title by regex (to support multiple versions)
 
-Global ScriptVersion := "1.1.6"
+Global ScriptVersion := "1.1.7"
 
 
 
@@ -42,6 +42,19 @@ EnableReloadScriptHotkey()
 EnableExitScriptHotkey()
 
 
+
+;Calculator for Resolution
+MonitorPrimary := MonitorGetPrimary()
+MonitorCount := MonitorGetCount()
+loop MonitorCount {
+    if (MonitorPrimary != A_Index)
+        continue
+    MonitorGet A_Index, &L, &T, &R, &B
+}
+
+;Mathing for resolution 
+global ResMultiX := R / 1920.0
+global ResMultiY := B / 1080.0
 
 
 
@@ -557,7 +570,7 @@ ConfigureContextualBindings() {
 	GameScreen := not FullScreenMenu and IsGameScreen()
 	DialogueActive := not FullScreenMenu and not GameScreen and IsDialogueScreen()
 	DialogueActiveOrNotShop := DialogueActive or not IsShopMenu()
-	FishingActive := GameScreen and IsColor(1626, 1029, "0xFFE92C") and (IsColor(62, 42, "0xFFFFFF") and not IsColor(65, 29, "0xE2BD89")) and not IsColor(1723, 1030, "0xFFFFFF") ; 3rd action icon bound to LMB & (leave icon present & not Paimon's head) & no "E" skill
+	FishingActive := GameScreen and IsColor(round(1626*ResMultiX), round(1029*ResMultiY), "0xFFE92C") and (IsColor(round(62*ResMultiX), round(42*ResMultiY), "0xFFFFFF") and not IsColor(round(65*ResMultiX), round(29*ResMultiY), "0xE2BD89")) and not IsColor(round(1723*ResMultiX), round(1030*ResMultiY), "0xFFFFFF") ; 3rd action icon bound to LMB & (leave icon present & not Paimon's head) & no "E" skill
 	PlayScreen := GameScreen and not FishingActive
 
 	If (MenuActionsEnabled) {
@@ -798,7 +811,7 @@ DoAutoSprint() {
 
 	; Extra run mode
 	If (IsExtraRun()) {
-		SkillColor := SubStr(GetColor(1586, 970), 1, 3)
+		SkillColor := SubStr(GetColor(round(1586*ResMultiX), round(970*ResMultiY)), 1, 3)
 		; Super ugly, but somewhat works :/
 		If (SkillColor == "0xE" or SkillColor == "0xF") {
 			Send "{LShift Up}"
@@ -916,31 +929,37 @@ Global PressingXButtonToJump := False
 Global PressingSpace := False
 Global ResetAutoSprint := False
 
-
+;TODO: still works in water
 
 OnSpace(*) {
 	Global
 	If (not PressingSpace)
-		SetTimer PreBunnyhopS, -200 ; Let the user release the button
-	PressingSpace := True
+		SetTimer PreBunnyhopS, -600 ; Start after 600 ms because of boat
+		PressingSpace := True
 }
 
 OnSpaceUp(*) {
 	Global
 	PressingSpace := False
+	SetTimer BunnyhopS, 0 ; Stop continuous jumping when Space is released
+	SetTimer PreBunnyhopS, 0 ; Stop the delay timer if Space is released early
+	If (IsDiving()) {
+		Send "{Space Up}"
+	}
 }
 
 XButtonJump(*) {
 	Global
 	If (not PressingXButtonToJump)
 		SetTimer PreBunnyhopX, -200
-	PressingXButtonToJump := True
-	Jump()
+		PressingXButtonToJump := True
 }
 
 XButtonJumpUp(*) {
 	Global
 	PressingXButtonToJump := False
+	SetTimer BunnyhopX, 0 ; Stop continuous jumping when XButton is released
+	SetTimer PreBunnyhopX, 0 ; Stop the delay timer if XButton is released early
 	If (IsDiving()) {
 		Send "{Space Up}"
 	}
@@ -951,26 +970,11 @@ XButtonJumpUp(*) {
 }
 
 
-
-Jump() {
-	Global
-	; Long jump if in boat
-	If (IsInBoat()) {
-		Send "{Space Down}"
-		Sleep 700
-		Send "{Space Up}"
-		Return
-	}
-
-	SimpleJump()
-}
-
 PreBunnyhopX() {
-	SetTimer BunnyhopX, 50
+	SetTimer BunnyhopX, 5 ; Start continuous bunny hopping after delay
 }
-
 PreBunnyhopS() {
-	SetTimer BunnyhopS, 50
+	SetTimer BunnyhopS, 5 ; Start continuous bunny hopping after delay
 }
 
 
@@ -998,6 +1002,10 @@ BunnyhopS() {
 
 SimpleJump() {
 	Global
+	; Ensure Space is released before jumping
+	Send "{Space Up}"
+	Sleep 10 
+
 	; Allow jumping while in extra run mode
 	If (ResetAutoSprint) {
 		SetTimer ContinueAutoSprint, 0 ; Kill old timer
@@ -1121,9 +1129,9 @@ DialogueSkip() {
 
 DialogueSkipClicking() {
 	Send "{f}"
-	If (PixelSearch(&FoundX, &FoundY, 1310, 840, 1310, 580, "0x806200")) ; Mission
+	If (PixelSearch(&FoundX, &FoundY, round(1310*ResMultiX), round(840*ResMultiY), round(1310*ResMultiX), round(580*ResMultiY), "0x806200")) ; Mission
 		LockedClick(FoundX, FoundY)
-	Else If (PixelSearch(&FoundX, &FoundY, 1310, 840, 1310, 580, "0xFFFFFF")) ; Dialoue
+	Else If (PixelSearch(&FoundX, &FoundY, round(1310*ResMultiX), round(840*ResMultiY), round(1310*ResMultiX), round(580*ResMultiY), "0xFFFFFF")) ; Dialoue
 		LockedClick(FoundX, FoundY)
 }
 
@@ -1506,32 +1514,33 @@ Pickup() {
 HasPickup() {
 	; Search for "F" icon
 	Color := "0xCDCDCD"
-	If (not PixelSearch(&FoundX, &FoundY, 1120, 340, 1120, 730, Color)) { ; Icon wasn't found
+	If (not PixelSearch(&FoundX, &FoundY, round(1120*ResMultiX), round(340*ResMultiY), round(1120*ResMultiX), round(730*ResMultiY), Color)) { ; Icon wasn't found
 		Return False
 	}
+	;MsgBox "Item Found" ; TODO: activates inconsistent
 
 	; Do not pickup if position of "F" has changed
 	Sleep 10
-	If (not IsColor(FoundX - 1, FoundY, Color))
+	If (not IsColor(FoundX - round(1*ResMultiX), FoundY, Color))
 		Return False
 
 	; Check if there are no extra prompts
-	If (PixelSearch(&FX, &FY, 1173, FoundY - 2, 1200, FoundY + 3, "0xFFFFFF", 25) and PixelSearch(&_, &_, FX + 1, FY + 1, FX + 4, FY + 2, "0xFFFFFF", 25)) {
-		If (IsColor(1177, FoundY - 3, "0xFDFDFE") and IsColor(1200, FoundY + 14, "0xF4F4F4")) ; Hand
+	If (PixelSearch(&FX, &FY, round(1173*ResMultiX), FoundY - round(2*ResMultiY), round(1200*ResMultiY), FoundY + round(3*ResMultiY), "0xFFFFFF", 25) and PixelSearch(&_, &_, FX + round(1*ResMultiX), FY + round(1*ResMultiY), FX + round(4*ResMultiX), FY + round(2*ResMultiY), "0xFFFFFF", 25)) {
+		If (IsColor(round(1177*ResMultiX), FoundY - round(3*ResMultiY), "0xFDFDFE") and IsColor(round(1200*ResMultiX), FoundY + round(14*ResMultiY), "0xF4F4F4")) ; Hand
 			Return True
-		If (PixelSearch(&_, &_, 1173, FoundY - 12, 1200, FoundY + 12, "0x000000", 30)) ; Icon has dark color
+		If (PixelSearch(&_, &_, round(1173*ResMultiX), FoundY - round(12*ResMultiY), round(1200*ResMultiX), FoundY + round(12*ResMultiY), "0x000000", 30)) ; Icon has dark color
 			Return True
-		If (PixelSearch(&_, &_, 1220, FoundY - 12, 1240, FoundY + 12, "0xACFF45")) ; Rare green item
+		If (PixelSearch(&_, &_, round(1220*ResMultiX), FoundY - round(12*ResMultiY), round(1240*ResMultiX), FoundY + round(12*ResMultiY), "0xACFF45")) ; Rare green item
 			Return True
-		If (PixelSearch(&_, &_, 1220, FoundY - 12, 1240, FoundY + 12, "0x4FF4FF")) ; Rare blue item
+		If (PixelSearch(&_, &_, round(1220*ResMultiX), FoundY - round(12*ResMultiY), round(1240*ResMultiX), FoundY + round(12*ResMultiY), "0x4FF4FF")) ; Rare blue item
 			Return True
-		If (PixelSearch(&_, &_, 1220, FoundY - 12, 1240, FoundY + 12, "0xF998FF")) ; Rare pink item
+		If (PixelSearch(&_, &_, round(1220*ResMultiX), FoundY - round(12*ResMultiY), round(1240*ResMultiX), FoundY + round(12*ResMultiY), "0xF998FF")) ; Rare pink item
 			Return True
-		If (IsColor(1190, FoundY - 4, "0xACB6CC")) ; Starconch
+		If (IsColor(round(1190*ResMultiX), FoundY - round(4*ResMultiY), "0xACB6CC")) ; Starconch
 			Return True
-		If (IsColor(1183, FoundY + 2, "0x3B58BF")) ; Glaze Lily
+		If (IsColor(round(1183*ResMultiX), FoundY + round(2*ResMultiY), "0x3B58BF")) ; Glaze Lily
 			Return True
-		If (IsColor(1183, FoundY + 9, "0x629C57")) ; Sweet Flower
+		If (IsColor(round(1183*ResMultiX), FoundY + round(9*ResMultiY), "0x629C57")) ; Sweet Flower
 			Return True
 		Return False
 	}
@@ -1719,7 +1728,7 @@ PressedMButtonToTP(*) {
 
 
 
-Global MapTPButton := { Color: "0xFFCB33", X: 1478, Y: 1006 } ; "Teleport" button on the lower right
+Global MapTPButton := { Color: "0xFFCB33", X: round(1478*ResMultiX), Y: round(1006*ResMultiY) } ; "Teleport" button on the lower right
 DoMapClick() {
 	If (SimpleTeleport())
 		Return
@@ -1728,7 +1737,7 @@ DoMapClick() {
 	Sleep 50
 	Try {
 		; Wait for a little white arrow or teleport button
-		WaitPixelsRegions([ { X1: 1255, Y1: 240, X2: 1258, Y2: 1080, Color: "0xECE5D8" }, { X1: MapTPButton.X, Y1: MapTPButton.Y, X2: MapTPButton.X, Y2: MapTPButton.Y, Color: MapTPButton.Color } ])
+		WaitPixelsRegions([ { X1: round(1255*ResMultiX), Y1: round(240*ResMultiY), X2: round(1258*ResMultiX), Y2: round(1080*ResMultiY), Color: "0xECE5D8" }, { X1: MapTPButton.X, Y1: MapTPButton.Y, X2: MapTPButton.X, Y2: MapTPButton.Y, Color: MapTPButton.Color } ])
 	} Catch {
 		Return
 	}
@@ -1748,20 +1757,20 @@ DoMapClick() {
 	; Find the upper available teleport
 	Y := -1
 	For (Index, TeleportablePointColor in TeleportablePointColors) {
-		If (PixelSearch(&FoundX, &FoundY, 1298, 240, 1299, 1080, TeleportablePointColor)) {
+		If (PixelSearch(&FoundX, &FoundY, round(1298*ResMultiX), round(240*ResMultiY), round(1299*ResMultiX), round(1080*ResMultiY), TeleportablePointColor)) {
 			If (Y == -1 or FoundY < Y)
 				Y := FoundY
 		}
 	}
 
 	If (Y == -1) {
-		If (PixelSearch(&FoundX, &FoundY, 1298, 240, 1299, 1080, "0xFFCC00")) { ; Sub-Space Waypoint (Tea Pot)
-			If (IsColor(FoundX, FoundY - 10, "0xFFFFFF"))
+		If (PixelSearch(&FoundX, &FoundY, round(1298*ResMultiX), round(240*ResMultiY), round(1299*ResMultiX), round(1080*ResMultiY), "0xFFCC00")) { ; Sub-Space Waypoint (Tea Pot)
+			If (IsColor(FoundX, FoundY - round(10*ResMultiY), "0xFFFFFF"))
 				Y := FoundY
 		}
 	}
 
-	If (Y != -1)
+	If (Y != -round(1*ResMultiY))
 		Teleport(Y)
 }
 
@@ -1780,7 +1789,7 @@ SimpleTeleport() {
 Teleport(Y) {
 	Sleep 200
 
-	LockedClick(1298, Y)
+	LockedClick(round(1298*ResMultiX), Y)
 
 	If (not WaitPixelColor(MapTPButton.Color, MapTPButton.X, MapTPButton.Y, 3000, True))
 		Return
@@ -1875,7 +1884,7 @@ ChangeParty(NewPartyNum) {
 
 	; Check for current party (even)
 	Loop (10) {
-		If (not IsColor(790 + ((A_Index - 1) * 36), 48, "0xFFFFFF"))
+		If (not IsColor(round(790*ResMultiX) + ((A_Index - 1) * 36), 48, "0xFFFFFF"))
 			Continue
 
 		CurrentPartyNum := A_Index
@@ -1886,7 +1895,7 @@ ChangeParty(NewPartyNum) {
 	If (CurrentPartyNum == -1) {
 		Even := False
 		Loop (9) {
-			If (not IsColor(808 + ((A_Index - 1) * 36), 48, "0xFFFFFF")) ; Check for current party
+			If (not IsColor(round(808*ResMultiX) + ((A_Index - 1) * 36), 48, "0xFFFFFF")) ; Check for current party
 				Continue
 
 			CurrentPartyNum := A_Index
@@ -1900,13 +1909,13 @@ ChangeParty(NewPartyNum) {
 
 	Before := 0
 	After := 0
-	CheckXCoord := Even ? 792 : 810
+	CheckXCoord := Even ? round(792*ResMultiX) : round(810*ResMultiY)
 
 	; Figure out how many parties available <before current
 	Loop (CurrentPartyNum - 1) {
 		Ind := CurrentPartyNum - A_Index
 		XCoord := CheckXCoord + ((Ind - 1) * 36)
-		If (SubStr(GetColor(XCoord, 48), 1, 3) != "0x3")
+		If (SubStr(GetColor(XCoord, round(48*ResMultiY)), 1, 3) != "0x3")
 			Break
 		Before++
 	}
@@ -1915,7 +1924,7 @@ ChangeParty(NewPartyNum) {
 	Loop (10 - CurrentPartyNum) {
 		Ind := CurrentPartyNum + A_Index
 		XCoord := CheckXCoord + ((Ind - 1) * 36)
-		If (SubStr(GetColor(XCoord, 48), 1, 3) != "0x3")
+		If (SubStr(GetColor(XCoord, round(48*ResMultiY)), 1, 3) != "0x3")
 			Break
 		After++
 	}
@@ -1942,7 +1951,7 @@ ChangeParty(NewPartyNum) {
 	; Switch party
 	NextPartyX := Changes > 0 ? 75 : 1845
 	Loop (Abs(Changes)) {
-		LockedClick(NextPartyX, 539)
+		LockedClick(round(NextPartyX*ResMultiX), round(539*ResMultiY))
 		Sleep 50
 	}
 
@@ -1952,10 +1961,10 @@ ChangeParty(NewPartyNum) {
 	} Catch {
 		Return
 	}
-	LockedClick(1700, 1000) ; Press Deploy button
+	LockedClick(round(1700*ResMultiX), round(1000*ResMultiY)) ; Press Deploy button
 
 	; Done, exit
-	WaitPixelColor("0xFFFFFF", 838, 541, 12000) ; Wait for "Party deployed" notification
+	WaitPixelColor("0xFFFFFF", round(838*ResMultiX), round(541*ResMultiY), 12000) ; Wait for "Party deployed" notification
 	Send "{Esc}"
 }
 
@@ -2057,14 +2066,14 @@ BuyAvailable() {
 
 QuicklyBuyOnce() {
 	ClickOnBottomRightButton(False)
-	If (not WaitPixelColor("0x313131", 1007, 780, 1000, True)) ; Wait for tab to be active
+	If (not WaitPixelColor("0x313131", round(1007*ResMultiX), round(780*ResMultiY), 1000, True)) ; Wait for tab to be active
 		Return
 	Sleep 50
-	LockedClick(1178, 600) ; Max stacks
+	LockedClick(round(1178*ResMultiX), round(600*ResMultiY)) ; Max stacks
 	Sleep 50
-	LockedClick(1050, 760) ; Click Exchange
+	LockedClick(round(1050*ResMultiX), round(760*ResMultiY)) ; Click Exchange
 	Sleep 50
-	If (not WaitPixelColor("0xE9E5DC", 902, 574, 1000, True))
+	If (not WaitPixelColor("0xE9E5DC", round(902*ResMultiX), round(574*ResMultiY), 1000, True))
 		Return
 	ClickOnBottomRightButton(False) ; Skip purchased dialogue
 }
@@ -2080,15 +2089,15 @@ StopBuyingAll() {
 
 
 IsShopMenu() {
-	Return IsColor(80, 50, "0xD3BC8E") and IsColor(1840, 46, "0x3B4255") and IsColor(1740, 995, "0xECE5D8")
+	Return IsColor(round(80*ResMultiX), round(50*ResMultiY), "0xD3BC8E") and IsColor(round(1840*ResMultiX), round(46*ResMultiY), "0x3B4255") and IsColor(round(1740*ResMultiX), round(995*ResMultiY), "0xECE5D8")
 }
 
 IsAvailableForStock() {
-	Return not IsColor(1770, 930, "0xE5967E") ; Sold out
+	Return not IsColor(round(1770*ResMultiX), round(930*ResMultiY), "0xE5967E") ; Sold out
 }
 
 IsShopBuyingPopup() {
-	Return IsColor(600, 780, "0x38A1E4") and IsColor(1005, 780, "0x313131")
+	Return IsColor(round(600*ResMultiX), round(780*ResMultiY), "0x38A1E4") and IsColor(round(1005*ResMultiX), round(780*ResMultiY), "0x313131")
 }
 
 
@@ -2122,7 +2131,7 @@ DisableFeatureQuickShopBuying() {
 ; =======================================
 ; Clock management
 ; =======================================
-; Global ClockCenterX := 1440
+; Global ClockCenterX := 1440 -needs to be changed idk
 ; Global ClockCenterY := 501
 ; Global ClockRadius := 119
 ; Global ClickOffset := 30
@@ -2180,13 +2189,13 @@ OpenClockMenu(*) {
 		Return
 	OpenMenu()
 	Sleep 100
-	LockedClick(45, 715) ; Clock icon
+	LockedClick(round(45*ResMultiX), round(715*ResMultiY)) ; Clock icon
 }
 
 
 
 IsClockMenu() {
-	Return IsColor(1870, 50, "0xECE5D8")
+	Return IsColor(round(1870*ResMultiX), round(50*ResMultiY), "0xECE5D8")
 }
 
 SkipToTime(NeededTime) {
@@ -2199,9 +2208,9 @@ SkipToTime(NeededTime) {
 	ClockMenuAlreadyOpened := IsClockMenu()
 	If (not ClockMenuAlreadyOpened) {
 		OpenMenu()
-
-		LockedClick(45, 715) ; Clock icon
-		WaitPixelColor("0xECE5D8", 1870, 50, 5000) ; Wait for the clock menu
+		Sleep 500
+		LockedClick(round(45*ResMultiX), round(715*ResMultiY)) ; Clock icon
+		WaitPixelColor("0xECE5D8", round(1870*ResMultiX), round(50*ResMultiY), 5000) ; Wait for the clock menu
 	}
 
 	Angle := GetCurrentAngle()
@@ -2227,25 +2236,25 @@ SkipToTime(NeededTime) {
 		Offset := Time + A_Index * 6 + 1
 		If (Offset > 24)
 			Offset -= 24
-		LockedClick(HourXCoords[Offset], HourYCoords[Offset])
-		Sleep 50
-		LockedClick(HourXCoords[Offset], HourYCoords[Offset]) ; Sometimes Genshin ignores the first click
+		LockedClick(Round(Integer(HourXCoords[Offset]) * ResMultiX), Round(Integer(HourYCoords[Offset]) * ResMultiY)) ;works better with Integer()
+		Sleep 250
+		LockedClick(Round(Integer(HourXCoords[Offset]) * ResMultiX), Round(Integer(HourYCoords[Offset]) * ResMultiY)) ; Sometimes Genshin ignores the first click
 		Sleep 250
 	}
 
 	Offset := NeededTime + 1
 	If (Offset > 24)
 		Offset -= 24
-	LockedClick(HourXCoords[Offset], HourYCoords[Offset])
+	LockedClick(Round(Integer(HourXCoords[Offset]) * ResMultiX), Round(Integer(HourYCoords[Offset]) * ResMultiY))
 	Sleep 250
 
-	LockedClick(1440, 1000) ; "Confirm" button
+	LockedClick(round(1440*ResMultiX), round(1000*ResMultiY)) ; "Confirm" button
 
 	Sleep 100
-	WaitPixelColor("0xECE5D8", 1870, 50, 30000) ; Wait for the clock menu
+	WaitPixelColor("0xECE5D8", round(1870*ResMultiX), round(50*ResMultiY), 30000) ; Wait for the clock menu
 
 	If (ClockMenuAlreadyOpened or GetKeyState("NumpadDiv")) {
-		MouseMove 1439, 501
+		MouseMove round(1439*ResMultiX), round(501*ResMultiY)
 		Return
 	}
 
@@ -2255,10 +2264,10 @@ SkipToTime(NeededTime) {
 	Send "{Esc}"
 }
 
-GetCurrentAngle() {
+GetCurrentAngle() { 
 	Global
 	Loop (TotalAngles) {
-		If (IsColor(XCoords[A_Index], YCoords[A_Index], "0xECE5D8"))
+		If (IsColor(XCoords[A_Index]*ResMultiX, YCoords[A_Index]*ResMultiY, "0xECE5D8"))
 			Return Angles[A_Index]
 	}
 	Return 0
@@ -2321,15 +2330,13 @@ GoToSereniTeaPot(*) {
 
 	Sleep 100
 
-	LockedClick(1050, 50) ; Gadgets tab
-	WaitPixelColor("0xD3BC8E", 1055, 92, 1000) ; Wait for tab to be active
+	LockedClick(round(1050*ResMultiX), round(50*ResMultiY)) ; Gadgets tab
+	WaitPixelColor("0xD3BC8E", round(1055*ResMultiX), round(92*ResMultiY), 1000) ; Wait for tab to be active
 
 	Sleep 200
 
 	; Try to find gadget
-	If (not PixelSearch(&FoundX, &FoundY, 120, 206, 980, 206, "0xC65C2C"))
-		Return
-	If (not IsColor(FoundX + 1, FoundY, "0xC65C2C"))
+	If (not PixelSearch(&FoundX, &FoundY, round(120*ResMultiX), round(206*ResMultiY), round(980*ResMultiX), round(206*ResMultiY), "0xC65C2C"))
 		Return
 
 	LockedClick(FoundX, FoundY)
@@ -2389,7 +2396,7 @@ ParseBPRewards(*) {
 
 	Sleep 200
 
-	If (IsColor(640, 887, "0x38A2E4")) { ; Picking rewards
+	If (IsColor(round(640*ResMultiX), round(887*ResMultiY), "0x38A2E4")) { ; Picking rewards
 		MoveCursorToCenter()
 		Return
 	}
@@ -2400,10 +2407,10 @@ ParseBPRewards(*) {
 ReceiveBpExp() {
 	Global
 	; Check for available BP experience and receive if any
-	If (not IsColor(993, 20, RedNotificationColor)) ; No exp
+	If (not IsColor(round(993*ResMultiX), round(20*ResMultiY), RedNotificationColor)) ; No exp
 		Return
 
-	LockedClick(993, 20) ; To exp tab
+	LockedClick(round(993*ResMultiX), round(20*ResMultiY)) ; To exp tab
 	Sleep 300
 
 	ClickOnBottomRightButton() ; "Claim all"
@@ -2419,16 +2426,16 @@ ReceiveBpExp() {
 ReceiveBpRewards() {
 	Global
 	; Check for available BP experience and receive if any
-	If (not IsColor(899, 20, RedNotificationColor)) ; No rewards
+	If (not IsColor(round(899*ResMultiX), round(20*ResMultiY), RedNotificationColor)) ; No rewards
 		Return
 
-	LockedClick(899, 20) ; To rewards tab
+	LockedClick(round(899*ResMultiX), round(20*ResMultiY)) ; To rewards tab
 	Sleep 300
 
 	ClickOnBottomRightButton() ; "Claim all"
 	Sleep 400
 
-	If (IsColor(640, 887, "0x38A2E4")) ; Picking rewards
+	If (IsColor(round(640*ResMultiX), round(887*ResMultiY), "0x38A2E4")) ; Picking rewards
 		Return
 
 	Send "{Esc}" ; Close popup with received rewards
@@ -2469,19 +2476,19 @@ Relogin(*) {
 
 	Sleep 100
 
-	LockedClick(49, 1022) ; Logout button
+	LockedClick(round(49*ResMultiX), round(1022*ResMultiY)) ; Logout button
 	Sleep 100
-	WaitPixelColor("0x303030", 1016, 757, 5000) ; Wait logout menu
+	WaitPixelColor("0x303030", round(1016*ResMultiX), round(757*ResMultiY), 5000) ; Wait logout menu
 
-	LockedClick(1017, 757) ; Confirm
+	LockedClick(round(1017*ResMultiX), round(757*ResMultiY)) ; Confirm
 	Sleep 100
-	WaitPixelColor("0x222222", 1820, 881, 30000) ; Wait for announcements icon
+	WaitPixelColor("0x222222", round(1820*ResMultiX), round(881*ResMultiY), 30000) ; Wait for announcements icon
 
-	LockedClick(500, 500)
+	LockedClick(round(500*ResMultiX), round(500*ResMultiY))
 	Sleep 500 ; Time for settings icon to disappear
-	WaitPixelColor("0x222222", 1823, 794, 30000) ; Wait for settings icon
+	WaitPixelColor("0x222222", round(1823*ResMultiX), round(794*ResMultiY), 30000) ; Wait for settings icon
 
-	LockedClick(500, 500)
+	LockedClick(round(500*ResMultiX), round(500*ResMultiY))
 }
 
 
@@ -2551,7 +2558,7 @@ AutoAttack4(*) {
 UpdateAttackMode(NewAttackMode) {
 	Global
 	AttackMode := NewAttackMode
-	ToolTip Langed("AutoAttackMode", "Current attack mode: ") AttackMode, 160, 1050
+	ToolTip Langed("AutoAttackMode", "Current attack mode: ") AttackMode, round(160*ResMultiX), round(1050*ResMultiY)
 	UpdateSetting("AutoAttackMode", AttackMode)
 	Sleep 2000
 	If (AttackMode == NewAttackMode)
@@ -2789,14 +2796,14 @@ CheckFishing() {
 IsHooked() {
 	Global
 	; Fish baited, start pulling
-	If (not Pulled and PixelSearch(&FoundX, &FoundY, 1613, 980, 1615, 983, "0xFFFFFF", 65)) {
+	If (not Pulled and PixelSearch(&FoundX, &FoundY, round(1613*ResMultiX), round(980*ResMultiY), round(1615*ResMultiX), round(983*ResMultiY), "0xFFFFFF", 65)) {
 		MouseClick "Left"
 		Pulled := True
 		Return True
 	}
 
 	; Option to cast the rod is present
-	If (IsColor(1740, 1030, "0xFFE92C")) {
+	If (IsColor(round(1740*ResMultiX), round(1030*ResMultiY), "0xFFE92C")) {
 		Pulled := False
 		Return False
 	}
@@ -2809,14 +2816,14 @@ CheckShape() {
 	; 1 -> return
 	; 2 -> pull
 
-	If (!PixelSearch(&FoundX1, &FoundY1, 718, 100, 1200, 100, "0xFFFFC0")) ; Current position
+	If (!PixelSearch(&FoundX1, &FoundY1, round(718*ResMultiX), round(100*ResMultiY), round(1200*ResMultiX), round(100*ResMultiY), "0xFFFFC0")) ; Current position
 		Return 0
 
-	If (!PixelSearch(&FoundX2, &FoundY2, 1210, 112, FoundX1 + 9, 112, "0xFFFFC0")) ; Border
+	If (!PixelSearch(&FoundX2, &FoundY2, round(1210*ResMultiX), round(112*ResMultiY), FoundX1 + round(9*ResMultiX), round(112*ResMultiY), "0xFFFFC0")) ; Border
 		Return 0
 
 	Result := FoundX1 - FoundX2
-	If (Result > -45) ; Distance from the current position to the right border
+	If (Result > -round(45*ResMultiX)) ; Distance from the current position to the right border
 		Return 1
 
 	Return 2
@@ -2855,64 +2862,64 @@ DisableFeatureAutoFishing() {
 ; Menu Actions
 ; =======================================
 PerformMenuActions() {
-	MenuArrow := IsColor(1839, 44, "0x3B4255")
+	MenuArrow := IsColor(round(1839*ResMultiX), round(44*ResMultiY), "0x3B4255")
 	; =======================================
 	; Lock Artifacts or Weapons
 	; =======================================
 	; Backpack
-	If (MenuArrow and IsColor(75, 43, "0xD3BC8E") and IsColor(75, 1005, "0x3B4255")) {
-		If (TryToFindLocker(1746, 444))
+	If (MenuArrow and IsColor(round(75*ResMultiX), round(43*ResMultiY), "0xD3BC8E") and IsColor(round(75*ResMultiX), round(1005*ResMultiY), "0x3B4255")) {
+		If (TryToFindLocker(round(1746*ResMultiX), round(444*ResMultiY)))
 			Return
 	}
 
 	; Artifact details
-	If (MenuArrow and IsColor(75, 70, "0xD3BC8E")) {
-		If (TryToFindLocker(1818, 445))
+	If (MenuArrow and IsColor(round(75*ResMultiX), round(70*ResMultiY), "0xD3BC8E")) {
+		If (TryToFindLocker(round(1818*ResMultiX), round(445*ResMultiY)))
 			Return
 	}
 
 	; Weapon details
-	If (MenuArrow and IsColor(97, 25, "0xD3BC8E")) {
-		If (TryToFindLocker(1818, 445))
+	If (MenuArrow and IsColor(round(97*ResMultiX), round(25*ResMultiY), "0xD3BC8E")) {
+		If (TryToFindLocker(round(1818*ResMultiX), round(445*ResMultiY)))
 			Return
 	}
 
 	; Character's Artifacts
-	If (MenuArrow and IsColor(60, 999, "0x3B4255") and IsColor(558, 1010, "0x3F4658")) {
-		If (TryToFindTransparentLocker(1846, 310))
+	If (MenuArrow and IsColor(round(60*ResMultiX), round(999*ResMultiY), "0x3B4255") and IsColor(round(558*ResMultiX), round(1010*ResMultiY), "0x3F4658")) {
+		If (TryToFindTransparentLocker(round(1846*ResMultiX), round(310*ResMultiY)))
 			Return
 	}
 
 	; Character Weapon Switch
-	If (MenuArrow and IsColor(561, 1005, "0x575C6A")) {
-		If (TryToFindTransparentLocker(1846, 230))
+	If (MenuArrow and IsColor(round(561*ResMultiX), round(1005*ResMultiY), "0x575C6A")) {
+		If (TryToFindTransparentLocker(round(1846*ResMultiX), round(230*ResMultiY)))
 			Return
 	}
 
 	; Artifacts/Weapons enhancement menu
-	If (MenuArrow and IsColor(1096, 53, "0x3B4255")) {
-		If (TryToFindLocker(1612, 505))
+	If (MenuArrow and IsColor(round(1096*ResMultiX), round(53*ResMultiY), "0x3B4255")) {
+		If (TryToFindLocker(round(1612*ResMultiX), round(505*ResMultiY)))
 			Return
 	}
 
 	; Mystic Offering
-	If (not MenuArrow and IsColor(1840, 45, "0x353B4B") and IsColor(904, 54, "0x3C4356")) {
-		If (TryToFindLocker(1421, 506))
+	If (not MenuArrow and IsColor(round(1840*ResMultiX), round(45*ResMultiY), "0x353B4B") and IsColor(round(904*ResMultiX), round(54*ResMultiY), "0x3C4356")) {
+		If (TryToFindLocker(round(1421*ResMultiX), round(506*ResMultiY)))
 			Return
 	}
 
 	; Domain artifacts
-	If (not MenuArrow and IsColor(715, 700, "0xECE5D8") and PixelSearch(&Px, &Py, 753, 475, 753, 110, "0xFFCC32")) {
-		If (TryToFindLocker(1151, 494))
+	If (not MenuArrow and IsColor(round(715*ResMultiX), round(700*ResMultiY), "0xECE5D8") and PixelSearch(&Px, &Py, round(753*ResMultiX), round(475*ResMultiY), round(753*ResMultiX), round(110*ResMultiY), "0xFFCC32")) {
+		If (TryToFindLocker(round(1151*ResMultiX), round(494*ResMultiY)))
 			Return
 	}
 
 	; =======================================
 	; Select maximum stacks and craft ores
 	; =======================================
-	If (MenuArrow and IsColor(62, 52, "0xD3BC8E") and IsColor(643, 1015, "0x3B4255")) {
+	If (MenuArrow and IsColor(round(62*ResMultiX), round(52*ResMultiY), "0xD3BC8E") and IsColor(round(643*ResMultiX), round(1015*ResMultiY), "0x3B4255")) {
 		MouseGetPos &CoordX, &CoordY
-		LockedClick(1516, 672) ; Max stacks
+		LockedClick(round(1516*ResMultiX), round(672*ResMultiY)) ; Max stacks
 		Sleep 50
 		ClickOnBottomRightButton()
 		Sleep 30
@@ -2923,7 +2930,7 @@ PerformMenuActions() {
 	; =======================================
 	; Mystic Offering button
 	; =======================================
-	If (MenuArrow and IsColor(1646, 1014, "0xDAB132") and IsColor(1381, 469, "0xE9E5DC") and not IsColor(847, 812, "0xC2C4C6")) {
+	If (MenuArrow and IsColor(round(1646*ResMultiX), round(1014*ResMultiY), "0xDAB132") and IsColor(round(1381*ResMultiX), round(469*ResMultiY), "0xE9E5DC") and not IsColor(round(847*ResMultiX), round(812*ResMultiY), "0xC2C4C6")) {
 		ClickOnBottomRightButton()
 		Return
 	}
@@ -2931,15 +2938,15 @@ PerformMenuActions() {
 	; =======================================
 	; Mystic Offering Confirm button
 	; =======================================
-	If (not MenuArrow and IsColor(600, 757, "0x38A2E4") and IsColor(1017, 752, "0xEDBE32") and IsColor(1400, 261, "0xFEEEAE")) {
-		ClickAndBack(1101, 755)
+	If (not MenuArrow and IsColor(round(600*ResMultiX), round(757*ResMultiY), "0x38A2E4") and IsColor(round(1017*ResMultiX), round(752*ResMultiY), "0xEDBE32") and IsColor(round(1400*ResMultiX), round(261*ResMultiY), "0xFEEEAE")) {
+		ClickAndBack(round(1101*ResMultiX), round(755*ResMultiY))
 		Return
 	}
 
 	; =======================================
 	; Obtain crafted item
 	; =======================================
-	If (MenuArrow and IsColor(1639, 1015, "0x99CC33")) {
+	If (MenuArrow and IsColor(round(1639*ResMultiX), round(1015*ResMultiY), "0x99CC33")) {
 		ClickOnBottomRightButton() ; Obtain
 		Sleep 200
 		Send "{Esc}" ; Skip animation
@@ -2950,22 +2957,22 @@ PerformMenuActions() {
 	; =======================================
 	; Auto Add & Enhance buttons
 	; =======================================
-	If (MenuArrow and IsColor(1292, 935, "0xE9E5DC") and IsColor(1613, 1018, "0x313131")) {
-		ColorCheck := SubStr(GetColor(1234, 864), 1, 3)
-		EmptyFirstPlus := not PixelSearch(&_, &_, 1200, 908, 1280, 908, "0xFFCC32") ; Weapons or Artifacts
+	If (MenuArrow and IsColor(round(1292*ResMultiX), round(935*ResMultiY), "0xE9E5DC") and IsColor(round(1613*ResMultiX), round(1018*ResMultiY), "0x313131")) {
+		ColorCheck := SubStr(GetColor(round(1234*ResMultiX), round(864*ResMultiY)), 1, 3)
+		EmptyFirstPlus := not PixelSearch(&_, &_, round(1200*ResMultiX), round(908*ResMultiY), round(1280*ResMultiX), round(908*ResMultiY), "0xFFCC32") ; Weapons or Artifacts
 		If (EmptyFirstPlus) {
-			ClickAndBack(1836, 764) ; Auto Add
+			ClickAndBack(round(1836*ResMultiX), round(764*ResMultiY)) ; Auto Add
 		} Else {
-			If (IsColor(1178, 326, "0xE1BD40", 25) or IsColor(98, 25, "0xD3BC8E")) { ; Will add new stat or is weapons menu
+			If (IsColor(round(1178*ResMultiX), round(326*ResMultiY), "0xE1BD40", 25) or IsColor(round(98*ResMultiX), round(25*ResMultiY), "0xD3BC8E")) { ; Will add new stat or is weapons menu
 				ClickOnBottomRightButton() ; Enhance
 				Return
 			}
 			MouseGetPos &CoordX, &CoordY
 			ClickOnBottomRightButton(False) ; Enhance
 			Sleep 100
-			LockedClick(75, 150) ; Switch to "Details" tab to skip animation
+			LockedClick(round(75*ResMultiX), round(150*ResMultiY)) ; Switch to "Details" tab to skip animation
 			Sleep 100
-			LockedClick(75, 220) ; Back to "Enhance" tab
+			LockedClick(round(75*ResMultiX), round(220*ResMultiY)) ; Back to "Enhance" tab
 			Sleep 100
 			MouseMove CoordX, CoordY
 		}
@@ -2983,7 +2990,7 @@ PerformMenuActions() {
 	; =======================================
 	; Craft/Convert Confirm button
 	; =======================================
-	If (not MenuArrow and PixelSearch(&Px, &Py, 964, 700, 1050, 900, "0xFFCB32")) {
+	If (not MenuArrow and PixelSearch(&Px, &Py, round(964*ResMultiX), round(700*ResMultiY), round(1050*ResMultiX), round(900*ResMultiY), "0xFFCB32")) {
 		ClickAndBack(Px, Py)
 		Return
 	}
@@ -2991,39 +2998,39 @@ PerformMenuActions() {
 	; =======================================
 	; Enhance Confirm button
 	; =======================================
-	If (not MenuArrow and IsColor(835, 734, "0x4A5366") and IsColor(515, 263, "0xFEEEAE") and IsColor(1025, 755, "0xF3C232")) {
-		ClickAndBack(1105, 760)
+	If (not MenuArrow and IsColor(round(835*ResMultiX), round(734*ResMultiY), "0x4A5366") and IsColor(round(515*ResMultiX), round(263*ResMultiY), "0xFEEEAE") and IsColor(round(1025*ResMultiX), round(755*ResMultiY), "0xF3C232")) {
+		ClickAndBack(round(1105*ResMultiX), round(760*ResMultiY))
 		Return
 	}
 
 	; =======================================
 	; Confirm buttons
 	; =======================================
-	If (not MenuArrow and PixelSearch(&Px, &Py, 805, 828, 831, 902, "0xFFCB32")) {
-		ClickAndBack(888, Py)
+	If (not MenuArrow and PixelSearch(&Px, &Py, round(805*ResMultiX), round(828*ResMultiY), round(831*ResMultiX), round(902*ResMultiY), "0xFFCB32")) {
+		ClickAndBack(round(888*ResMultiX), Py)
 		Return
 	}
 
 	; =======================================
 	; Lay Line Blossom (resin Boss rewards)
 	; =======================================
-	If (not MenuArrow and IsColor(835, 734, "0x4A5366") and IsColor(515, 263, "0xFEEEAE") and not IsColor(633, 782, "0x4A5366")) {
-		ClickAndBack(944, 755)
+	If (not MenuArrow and IsColor(round(835*ResMultiX), round(734*ResMultiY), "0x4A5366") and IsColor(round(515*ResMultiX), round(263*ResMultiY), "0xFEEEAE") and not IsColor(round(633*ResMultiX), round(782*ResMultiY), "0x4A5366")) {
+		ClickAndBack(round(944*ResMultiX), round(755*ResMultiY))
 		Return
 	}
 
 	; =======================================
 	; Tea Pot Coins & Companion Exp
 	; =======================================
-	If (IsColor(1862, 47, "0x3B4255") and IsColor(1366, 1016, "0xFFCB32") and IsColor(1775, 38, "0x3B4255")) {
+	If (IsColor(round(1862*ResMultiX), round(47*ResMultiY), "0x3B4255") and IsColor(round(1366*ResMultiX), round(1016*ResMultiY), "0xFFCB32") and IsColor(round(1775*ResMultiX), round(38*ResMultiY), "0x3B4255")) {
 		MouseGetPos &CoordX, &CoordY
-		LockedClick(1077, 946) ; Coins
+		LockedClick(round(1077*ResMultiX), round(946*ResMultiY)) ; Coins
 		Sleep 30
-		LockedClick(1285, 35) ; Close popup in case there are no coins
+		LockedClick(round(1285*ResMultiX), round(35*ResMultiY)) ; Close popup in case there are no coins
 		Sleep 30
-		LockedClick(1808, 712) ; Exp
+		LockedClick(round(1808*ResMultiX), round(712*ResMultiY)) ; Exp
 		Sleep 30
-		LockedClick(1285, 35) ; Close popup in case there's no exp
+		LockedClick(round(1285*ResMultiX), round(35*ResMultiY)) ; Close popup in case there's no exp
 		Sleep 30
 		MouseMove CoordX, CoordY
 		Return
@@ -3032,11 +3039,11 @@ PerformMenuActions() {
 	; =======================================
 	; Expeditions
 	; =======================================
-	If (MenuArrow and IsColor(63, 56, "0xECE5D8") and IsColor(73, 1014, "0xFFCC33")) {
+	If (MenuArrow and IsColor(round(63*ResMultiX), round(56*ResMultiY), "0xECE5D8") and IsColor(round(73*ResMultiX), round(1014*ResMultiY), "0xFFCC33")) {
 		MouseGetPos &CoordX, &CoordY
-		LockedClick(73, 1014) ; Claim All
-		WaitPixelColor("0x313131", 1007, 1019, 3000, True)
-		LockedClick(1007, 1019) ; Dispatch Again
+		LockedClick(round(73*ResMultiX), round(1014*ResMultiY)) ; Claim All
+		WaitPixelColor("0x313131", round(1007*ResMultiX), round(1019*ResMultiY), 3000, True)
+		LockedClick(round(1007*ResMultiX), round(1019*ResMultiY)) ; Dispatch Again
 		Sleep 30
 		MouseMove CoordX, CoordY
 		Return
@@ -3045,8 +3052,8 @@ PerformMenuActions() {
 	; =======================================
 	; Continue Challenge (Domain)
 	; =======================================
-	If (not MenuArrow and SubStr(GetColor(597, 998), 1, 3) == "0x3" and SubStr(GetColor(1033, 998), 1, 3) == "0xF" and IsColor(1018, 582, "0xECEAEB")) {
-		ClickAndBack(1100, 995)
+	If (not MenuArrow and SubStr(GetColor(round(597*ResMultiX), round(998*ResMultiY)), 1, 3) == "0x3" and SubStr(GetColor(round(1033*ResMultiX), round(998*ResMultiY)), 1, 3) == "0xF" and IsColor(round(1018*ResMultiX), round(582*ResMultiY), "0xECEAEB")) {
+		ClickAndBack(round(1100*ResMultiX), round(995*ResMultiY))
 		Return
 	}
 
@@ -3054,30 +3061,30 @@ PerformMenuActions() {
 	; Toggle Auto Dialogue
 	; =======================================
 	If (not IsFullScreenMenuOpen() and not IsGameScreen() and IsDialogueScreen()) {
-		ClickAndBack(98, 49)
+		ClickAndBack(round(98*ResMultiX), round(49*ResMultiY))
 		Return
 	}
 
 	; =======================================
 	; Skip in Domain or Gacha
 	; =======================================
-	If (not PixelSearch(&_, &_, 0, 0, 1920, 1080, "0xECE5D8") and not IsGameScreen()) {
+	If (not PixelSearch(&_, &_, 0, 0, round(1920*ResMultiX), round(1080*ResMultiY), "0xECE5D8") and not IsGameScreen()) {
 		Click
-		If (WaitPixelColor("0xFFFFFF", 1817, 52, 500, True) and IsColor(1825, 52, "0xFFFFFF")) {
-			ClickAndBack(1817, 52)
+		If (WaitPixelColor("0xFFFFFF", round(1817*ResMultiX), round(52*ResMultiY), 500, True) and IsColor(round(1825*ResMultiX), round(52*ResMultiY), "0xFFFFFF")) {
+			ClickAndBack(round(1817*ResMultiX), round(52*ResMultiY))
 			Return
 		}
 	}
 }
 
 TryToFindLocker(TopX, TopY) {
-	If (PixelSearch(&FoundX, &FoundY, TopX, TopY, TopX, 72, "0xFF8A75")) {
-		If (IsColor(FoundX - 6, FoundY, "0x495366")) { ; Locked
+	If (PixelSearch(&FoundX, &FoundY, TopX, TopY, TopX, round(72*ResMultiY), "0xFF8A75")) {
+		If (IsColor(FoundX - round(6*ResMultiX), FoundY, "0x495366")) { ; Locked
 			ClickAndBack(FoundX, FoundY)
 			Return True
 		}
-	} Else If (PixelSearch(&FoundX, &FoundY, TopX, 72, TopX, TopY, "0x9EA1A8")) {
-		If (IsColor(FoundX - 6, FoundY, "0xF3EFEA")) { ; Unlocked
+	} Else If (PixelSearch(&FoundX, &FoundY, TopX, round(72*ResMultiY), TopX, TopY, "0x9EA1A8")) {
+		If (IsColor(FoundX - round(6*ResMultiX), FoundY, "0xF3EFEA")) { ; Unlocked
 			ClickAndBack(FoundX, FoundY)
 			Return True
 		}
@@ -3087,8 +3094,8 @@ TryToFindLocker(TopX, TopY) {
 
 TryToFindTransparentLocker(TopX, TopY) {
 	; Search for a locked lock
-	If (PixelSearch(&FoundX, &FoundY, TopX, TopY, TopX, 165, "0xFF8A75")) {
-		If (IsColor(TopX - 6, FoundY, "0x495366")) { ; Locked
+	If (PixelSearch(&FoundX, &FoundY, TopX, TopY, TopX, round(165*ResMultiY), "0xFF8A75")) {
+		If (IsColor(TopX - round(6*ResMultiX), FoundY, "0x495366")) { ; Locked
 			ClickAndBack(FoundX, FoundY)
 			Return True
 		}
@@ -3097,19 +3104,19 @@ TryToFindTransparentLocker(TopX, TopY) {
 	; Unlocked locker might have some transparency and change its color,
 	; so "IsColor" can't be relayed on, and simple "PixelSearch" might be
 	; wrong due to text elements
-	LastY := 105
+	LastY := round(105*ResMultiY)
 	While (LastY < TopY) {
 		If (not PixelSearch(&FoundX, &FoundY, TopX, LastY, TopX, TopY, "0x8B97A2", 30)) {
 			Return False
 		}
-		If (not IsColor(FoundX, FoundY + 10, "0x8B97A2", 30)) {
-			LastY := FoundY + 10
+		If (not IsColor(FoundX, FoundY + round(10*ResMultiY), "0x8B97A2", 30)) {
+			LastY := FoundY + round(10*ResMultiY)
 			Continue
 		}
-		If (not PixelSearch(&_, &_, FoundX + 8, FoundY, FoundX + 8, FoundY, "0x8B97A2", 30)) {
+		If (not PixelSearch(&_, &_, FoundX + round(8*ResMultiX), FoundY, FoundX + round(8*ResMultiX), FoundY, "0x8B97A2", 30)) {
 			Return False ; Not found
 		}
-		If (PixelSearch(&Px, &Py, FoundX - 8, FoundY, FoundX - 6, FoundY, "0xD3DAC7", 160)) { ; Unlocked
+		If (PixelSearch(&Px, &Py, FoundX - round(8*ResMultiX), FoundY, FoundX - round(6*ResMultiX), FoundY, "0xD3DAC7", 160)) { ; Unlocked
 			ClickAndBack(FoundX, FoundY)
 			Return True
 		}
@@ -3202,15 +3209,15 @@ StopChangingAmountOfGoods() {
 
 GoodsCheckX() {
 	Global
-	Return IncreasingGoods ? 1070 : 1610
+	Return IncreasingGoods ? round(1070*ResMultiX) : round(1610*ResMultiY)
 }
 
 GoodsCheckY() {
-	Return 670
+	Return round(670*ResMultiY)
 }
 
 IsCraftingMenu() {
-	Return IsColor(1838, 44, "0x3B4255") and IsColor(1647, 1014, "0xFFCB32") and IsColor(647, 1016, "0x3B4255")
+	Return IsColor(round(1838*ResMultiX), round(44*ResMultiY), "0x3B4255") and IsColor(round(1647*ResMultiX), round(1014*ResMultiY), "0xFFCB32") and IsColor(round(647*ResMultiX), round(1016*ResMultiY), "0x3B4255")
 }
 
 
@@ -3245,7 +3252,7 @@ OpenMenu() {
 }
 
 WaitMenu(ReturnOnTimeout := False) {
-	WaitPixelColor(LightMenuColor, 729, 63, 2000, ReturnOnTimeout) ; Wait for menu
+	WaitPixelColor(LightMenuColor, round(729*ResMultiX), round(63*ResMultiY), 2000, ReturnOnTimeout) ; Wait for menu
 }
 
 OpenInventory() {
@@ -3285,9 +3292,9 @@ SimpleLockedClick() {
 
 ClickOnBottomRightButton(Back := True) {
 	If (Back)
-		ClickAndBack(1730, 1000)
+		ClickAndBack(round(1730*ResMultiX), round(1000*ResMultiY))
 	Else
-		LockedClick(1730, 1000)
+		LockedClick(round(1730*ResMultiX), round(1000*ResMultiY))
 }
 
 MoveCursorToCenter() {
@@ -3297,64 +3304,64 @@ MoveCursorToCenter() {
 }
 
 WaitFullScreenMenu(Timeout := 3000) {
-	WaitPixelColor(LightMenuColor, 1859, 47, Timeout) ; Wait for close button on the top right
+	WaitPixelColor(LightMenuColor, round(1859*ResMultiX), round(47*ResMultiY), Timeout) ; Wait for close button on the top right
 }
 
 IsFullScreenMenuOpen() {
-	Return IsColor(1859, 47, LightMenuColor) or IsColor(1875, 35, LightMenuColor)
+	Return IsColor(round(1859*ResMultiX), round(47*ResMultiY), LightMenuColor) or IsColor(round(1875*ResMultiX), round(35*ResMultiY), LightMenuColor)
 }
 
 IsMapMenuOpen() {
 	; Map scale
-	Return IsColor(47, 427, "0xEDE5DA")
+	Return IsColor(round(47*ResMultiX), round(427*ResMultiY), "0xEDE5DA") ;IsColor(round(52*ResMultiX), round(1020*ResMultiY), "0xEDE5DA") -idk
 }
 
 ; Note: always better to check if not IsFullScreenMenuOpen() before checking the game screen
 IsGameScreen() {
-	Return IsColor(276, 58, "0xFFFFFF") ; Eye icon next to the map
+	Return IsColor(round(276*ResMultiX), round(58*ResMultiY), "0xFFFFFF") ; Eye icon next to the map
 }
 
 
 HasMenuCross() {
-	Return IsColor(1860, 45, "0xECE5D8")
+	Return IsColor(round(1860*ResMultiX), round(45*ResMultiY), "0xECE5D8")
 }
 
 ; Note: always better to check if not IsFullScreenMenuOpen()
 ; and not IsGameScreen() before checking the dialogue screen
 IsDialogueScreen() {
-	Return IsColor(60, 48, "0xECE5D8") and IsColor(80, 48, "0xECE5D8") ; Play or Pause button
+	Return IsColor(round(60*ResMultiX), round(48*ResMultiY), "0xECE5D8") and IsColor(round(80*ResMultiX), round(48*ResMultiY), "0xECE5D8") ; Play or Pause button
 }
 
 IsInBoat() {
-	Return IsColor(828, 976, "0xEDE5D9") ; Boat icon color
+	Return IsColor(round(828*ResMultiX), round(976*ResMultiY), "0xEDE5D9") ; Boat icon color
 }
 
 WaitDeployButtonActive(Timeout) {
-	WaitPixelColor("0x313131", 1557, 1005, Timeout) ; Wait for close button on the top right
+	WaitPixelColor("0x313131", round(1557*ResMultiX), round(1005*ResMultiY), Timeout) ; Wait for close button on the top right
 }
 
 WaitDialogueMenu() {
-	WaitPixelColor("0x656D77", 1180, 537, 3000) ; Wait for "..." icon in the center of the screen
+	WaitPixelColor("0xFFFFFF", round(1185*ResMultiX), round(537*ResMultiY), 3000) ; Wait for "..." icon in the center of the screen
 }
 
 ; Check if a character is frozen or in the bubble
 IsFrozen() {
 	; Space Text and Button Colors
-	Return IsColor(1417, 596, "0x333333") and IsColor(1417, 585, "0xFFFFFF")
+	Return IsColor(round(1417*ResMultiX), round(596*ResMultiY), "0x333333") and IsColor(round(1417*ResMultiX), round(585*ResMultiY), "0xFFFFFF")
 }
 
 HasSorushGadget() { ; ToDo: workaround gadget delay
-	Return IsColor(1810, 806, "0xD05C66") and IsColor(1804, 822, "0xDD7361")
+	Return IsColor(round(1810*ResMultiX), round(806*ResMultiY), "0xD05C66") and IsColor(round(1804*ResMultiX), round(822*ResMultiY), "0xDD7361")
 }
 
 IsDiving() {
-	Return IsColor(1692, 1044, "0xFFFFFF", 3) and IsColor(1692, 1045, "0xFFFFFF", 3)
+	Return IsColor(round(1692*ResMultiX), round(1044*ResMultiY), "0xFFFFFF", 3) and IsColor(round(1672.5*ResMultiX), round(1047,75*ResMultiY), "0xFFFFFF", 3)
 }
 
 
 ; Check if run should be infinite
 IsExtraRun() {
-	ExtraRunMode := IsColor(1695, 1030, "0xFFE92C") ; Ayaka / Mona run mode
+	ExtraRunMode := IsColor(round(1695*ResMultiX), round(1030*ResMultiY), "0xFFE92C") ; Ayaka / Mona run mode
 	Return ExtraRunMode or HasSorushGadget() or IsDiving()
 }
 

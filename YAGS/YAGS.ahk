@@ -950,10 +950,9 @@ OnSpaceUp(*) {
 
 XButtonJump(*) {
 	Global
-	If (not PressingXButtonToJump){
-		SetTimer PreBunnyhopX, -500 ; Start after 500 ms
+	If (not PressingXButtonToJump)
+		SetTimer PreBunnyhopX, -200
 		PressingXButtonToJump := True
-	}
 }
 
 XButtonJumpUp(*) {
@@ -970,14 +969,13 @@ XButtonJumpUp(*) {
 	}
 }
 
-PreBunnyhopS() {
-	SetTimer BunnyhopS, 5 ; Start continuous bunny hopping after delay
-}
 
 PreBunnyhopX() {
 	SetTimer BunnyhopX, 5 ; Start continuous bunny hopping after delay
 }
-
+PreBunnyhopS() {
+	SetTimer BunnyhopS, 5 ; Start continuous bunny hopping after delay
+}
 
 
 BunnyhopX() {
@@ -2210,7 +2208,7 @@ SkipToTime(NeededTime) {
 	ClockMenuAlreadyOpened := IsClockMenu()
 	If (not ClockMenuAlreadyOpened) {
 		OpenMenu()
-
+		Sleep 500
 		LockedClick(round(45*ResMultiX), round(715*ResMultiY)) ; Clock icon
 		WaitPixelColor("0xECE5D8", round(1870*ResMultiX), round(50*ResMultiY), 5000) ; Wait for the clock menu
 	}
